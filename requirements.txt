@@ -1,0 +1,15 @@
+langchain==0.3.18
+langchain-community==0.3.17
+langchain-core==0.3.34
+langchain-experimental==0.3.4
+langchain-openai==0.3.4
+langchain-text-splitters==0.3.6
+langchainhub==0.1.21
+numpy==2.2.2
+openai==1.61.1
+pandas==2.2.3
+pydantic==2.10.6
+pydantic_core==2.27.2
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+beautifulsoup4==4.13.3
