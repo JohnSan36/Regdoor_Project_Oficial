@@ -6,15 +6,14 @@ from langchain.schema.runnable import RunnablePassthrough
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema.agent import AgentFinish
-from langchain_core.tools import StructuredTool
+#from langchain_core.tools import StructuredTool
 from langchain.agents.output_parsers import OpenAIFunctionsAgentOutputParser
 from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain.agents.format_scratchpad import format_to_openai_function_messages
 from pydantic import BaseModel, Field
-from langchain.tools import Tool
+#from langchain.tools import Tool
 from flask import Flask, request, jsonify
 import os
-import json
 from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
 load_dotenv(find_dotenv())
@@ -31,17 +30,18 @@ def obter_hora_e_data_atual():
 
 
 data_atual = obter_hora_e_data_atual()
-texto = """Olá, tive uma reunião mais cedo hoje com representantes tanto da Autoridade Europeia dos Valores Mobiliários e dos 
-Mercados (ESMA) quanto da Autoridade de Supervisão Financeira da Suécia (FSA). Discutimos a harmonização das 
-regulamentações de ativos digitais em jurisdições da UE e os desafios específicos na implementação de estruturas de 
-conformidade."""
-
-
-
 app = Flask(__name__)
+
+
+memory = ConversationBufferMemory(
+    return_messages=True,
+    memory_key="chat_history"
+)
+
 
 @app.route("/webhook", methods=["POST"])
 def receive_message():
+    
     try:
         body_corp = request.data  
         body_str = body_corp.decode("utf-8")
@@ -86,13 +86,10 @@ def receive_message():
             """Extrutura as informações do texto"""
             return data, contatos, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, acoes_acompanhamento, sentimento
 
+
         toolls = [extrutura_informacao]
         toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
 
-        memory = ConversationBufferMemory(
-            return_messages=True,
-            memory_key="chat_history"
-        )
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", f"Você é um assistente juridico que extrai informações do texto fornecido. Para referencia a data atual é {data_atual}"),
@@ -100,6 +97,7 @@ def receive_message():
             ("user", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad")
         ])
+        print(memory)
 
 
         pass_through = RunnablePassthrough.assign(
@@ -126,13 +124,18 @@ def receive_message():
             memory=memory,
             tools=toolls,
             verbose=True,
+            return_intermediate_steps=True
         )
+
+        #print("\n\nConteúdo da memória antes da execução:", memory.load_memory_variables({}))
 
         resposta = agent_executor.invoke({"input": body_str})
         resposta_final = resposta["output"]
+        
+        #print(resposta)
+        #print("\n\nConteúdo da memória após a execução:", memory.load_memory_variables({}))
 
         return jsonify({"Status": resposta_final})
-    
 
     except Exception as e:
         return jsonify({"Erro": f"Falha ao processar JSON: {str(e)}"}), 500
