@@ -1,20 +1,20 @@
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-from langchain_core.tools import tool
-from langchain.agents import AgentExecutor
+from langchain.agents.format_scratchpad import format_to_openai_function_messages
+from langchain.agents.output_parsers import OpenAIFunctionsAgentOutputParser
+from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain.schema.runnable import RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema.agent import AgentFinish
-from langchain.agents.output_parsers import OpenAIFunctionsAgentOutputParser
-from langchain_core.utils.function_calling import convert_to_openai_function
-from langchain.agents.format_scratchpad import format_to_openai_function_messages
-from pydantic import BaseModel, Field
-from flask import Flask, request, jsonify
-import os
 from dotenv import load_dotenv, find_dotenv
+from langchain.agents import AgentExecutor
+from flask import Flask, request, jsonify
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 from datetime import datetime
 load_dotenv(find_dotenv())
+import os
 
 informações_necessarias = """
 # Data 
@@ -199,8 +199,8 @@ app = Flask(__name__)
 def receive_message():
     
     try:
-        body_corp = request.data  
-        body_str = body_corp.decode("utf-8")
+        body = request.data  
+        body_str = body.decode("utf-8")
         print("Mensagem recebida:", body_str)  
         resposta = agent_executor.invoke({"input": body_str})
         resposta_final = resposta["output"]
