@@ -174,7 +174,6 @@ prompt = ChatPromptTemplate.from_messages([
 
 
 def get_memory_for_user(whatsapp_id):
-
     memory = RedisChatMessageHistory(
         session_id=whatsapp_id, 
         redis_url=REDIS_URL)
@@ -204,29 +203,22 @@ def run_agent(input):
         passos_intermediarios.append((resposta, observacao))
 
 
-
-
-
 @app.post("/webhook")
 async def receive_message(request: Request):
     try:
-
         body = await request.json()
         response = body["n8n_message"]
         whatsapp_id = body['whatsapp_id']
         print("Mensagem recebida:", body)
-        print(f"----------####### {whatsapp_id} #######------------")
+        print(f"\n----------####### {whatsapp_id} #######------------")
         print(f"----------####### {response} #######------------\n")
 
-
-        whatsapp_id2 = str(whatsapp_id)
-        memory = get_memory_for_user(whatsapp_id2)
-        print("-----------------------", memory)
-
+        memoria = get_memory_for_user(whatsapp_id)
+        print("-----------------------", memoria, "-----------------------\n")
 
         agent_executor = AgentExecutor(
             agent=agent_chain,
-            memory=memory,
+            memory=memoria,
             tools=toolls,
             verbose=True,
             return_intermediate_steps=True
@@ -237,10 +229,8 @@ async def receive_message(request: Request):
 
         return {"Status": resposta_final}
 
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Falha ao processar JSON: {str(e)}")
-
 
 if __name__ == "__main__":
     import uvicorn
