@@ -8,18 +8,19 @@ from langchain.prompts import MessagesPlaceholder
 from langchain.schema.agent import AgentFinish
 from dotenv import load_dotenv, find_dotenv
 from langchain.agents import AgentExecutor
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, Request, HTTPException
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_redis import RedisChatMessageHistory
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, Field
 from datetime import datetime
-load_dotenv(find_dotenv())
+import base64
 import os
+import json
+load_dotenv(find_dotenv())
 
-app = Flask(__name__)
-api_key = "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"
-chat = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key)
+
 
 informações_necessarias = """
 # Data 
@@ -50,6 +51,7 @@ informações_necessarias = """
 - Você deve atribuir uma pontuação de sentimento (positivo, neutro, negativo) com base na entrada do usuário.
 """
 
+
 exemplos = """
 <exemplo 1>
 # Correção de Entrada Parcial:
@@ -75,6 +77,7 @@ exemplos = """
 </exemplo 2>
 """
 
+
 exemplos_listas = """
 # Usando '-' ao invés de '.'.
 1-Fulano de ciclano pelinous;
@@ -82,6 +85,7 @@ exemplos_listas = """
 3-Se popularizou na década de 60, quando a Letraset lançou decalques contendo passagens de Lorem Ipsum;
 4-Existem muitas variações disponíveis de passagens de Lorem Ipsum, mas a maioria sofreu algum tipo de alteração, seja por inserção de passagens com humor, ou palavras aleatórias que não parecem nem um pouco convincentes;
 """
+
 
 exemplos_listas = """
 - User: Today, we participated in an extensive compliance strategy session involving regulatory experts, legal teams, and compliance officers from multiple jurisdictions. The focus was on building a cohesive strategy to handle the rapidly evolving global regulatory landscape surrounding digital assets and fintech solutions. The session kicked off with a discussion on the recent developments from global regulatory bodies, including the Financial Action Task Force, FATF, the European Securities and Markets Authority, ESMA, and the U.S. Securities and Exchange Commission, SEC. The primary concern was ensuring compliance with anti-money laundering, TML, requirements, particularly with the implementation of the Travel Rule and enhanced KYC procedures across different regions. Among the key contributors were Sarah Bennett from the UK Financial Conduct 
@@ -100,26 +104,19 @@ Data: 24/02/2025
 Contatos: Sarah Bennett, Michael Tanoka e David Rodriguez pertencendo aos cargos xxxx, yyyy, zzzzz respectivamente.
 E assim por diante, forneça uma lista com todas as informações.
 """
-from fastapi import FastAPI, HTTPException
+
+
+app = FastAPI()
+api_key = "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"
+chat = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key)
+REDIS_URL = "redis://default:A1ZDEbkF87w7TR0MPTBREnTFOnBgfBw9@redis-14693.c253.us-central1-1.gce.redns.redis-cloud.com:14693/0"
+
 
 def obter_hora_e_data_atual():
     """Retorna a hora atual e a data de hoje."""
     agora = datetime.now()
     return agora.strftime("%Y-%m-%d - T%H:%M:%S")
 data_atual = obter_hora_e_data_atual()
-
-mensagem = None
-
-@app.route("/recieve", methods=["POST"])
-def recebe_id():
-    global mensagem
-    try:
-        mensagem = request.get_json()
-        print("Mensagem recebida:", mensagem)
-        return mensagem
-
-    except:
-        return jsonify({"Erro": "Falha ao receber ID"}), 500
 
 
 class ExtraiInformacoes(BaseModel):
@@ -170,15 +167,23 @@ toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", f"Você é um assistente juridico que extrai informações do texto fornecido apenas quando todas as {informações_necessarias} estiverem presentes, e caso alguma delas não esteja, pergunte ao usuario antes de acionar a tool 'extrutura_informacao'. Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar o tool, fornecendo uma lista com todas informações contidas ao final. Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}."),
-    MessagesPlaceholder(variable_name="chat_history"),
+    MessagesPlaceholder(variable_name="memory"),
     ("user", "{input}"),
     MessagesPlaceholder(variable_name="agent_scratchpad")
 ])
 
-memory = ConversationBufferMemory(
-    return_messages=True,
-    memory_key="chat_history"
-)
+
+def get_memory_for_user(whatsapp_id):
+
+    memory = RedisChatMessageHistory(
+        session_id=whatsapp_id, 
+        redis_url=REDIS_URL)
+    
+    return ConversationBufferMemory(
+        return_messages=True, 
+        memory_key="memory", 
+        chat_memory=memory)
+
 
 pass_through = RunnablePassthrough.assign(
     agent_scratchpad=lambda x: format_to_openai_function_messages(x["intermediate_steps"])
@@ -199,29 +204,66 @@ def run_agent(input):
         passos_intermediarios.append((resposta, observacao))
 
 
-agent_executor = AgentExecutor(
-    agent=agent_chain,
-    memory=memory,
-    tools=toolls,
-    verbose=True,
-    return_intermediate_steps=True
-)
 
 
-@app.route("/webhook", methods=["POST"])
-def receive_message():
-    
+
+@app.post("/webhook")
+async def receive_message(request: Request):
     try:
-        body = request.data  
-        body_str = body.decode("utf-8")
-        print("Mensagem recebida:", body_str)  
-        resposta = agent_executor.invoke({"input": body_str})
+
+        body = await request.json()
+        response = body["n8n_message"]
+        whatsapp_id = body['whatsapp_id']
+        print("Mensagem recebida:", body)
+        print(f"----------####### {whatsapp_id} #######------------")
+        print(f"----------####### {response} #######------------\n")
+
+
+        whatsapp_id2 = str(whatsapp_id)
+        memory = get_memory_for_user(whatsapp_id2)
+        print("-----------------------", memory)
+
+
+        agent_executor = AgentExecutor(
+            agent=agent_chain,
+            memory=memory,
+            tools=toolls,
+            verbose=True,
+            return_intermediate_steps=True
+        )
+
+        resposta = agent_executor.invoke({"input": response})
         resposta_final = resposta["output"]
 
-        return jsonify({"Status": resposta_final})
+        return {"Status": resposta_final}
+
 
     except Exception as e:
-        return jsonify({"Erro": f"Falha ao processar JSON: {str(e)}"}), 500
-    
+        raise HTTPException(status_code=500, detail=f"Falha ao processar JSON: {str(e)}")
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+
+
+
+
+
+
+    """
+# Adiciona mensagens ao histórico
+history.add_message(HumanMessage(content="Hello, AI!"))
+history.add_message(AIMessage(content="Hello, human! How can I assist you today?"))
+
+# Recupera todas as mensagens
+messages = history.messages
+for message in messages:
+    print(f"{message.type}: {message.content}")
+"""
