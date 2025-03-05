@@ -5,21 +5,16 @@ from langchain.schema.runnable import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
-from langchain.schema.agent import AgentFinish
 from dotenv import load_dotenv, find_dotenv
 from langchain.agents import AgentExecutor
 from fastapi import FastAPI, Request, HTTPException
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_redis import RedisChatMessageHistory
-from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel, Field
 from datetime import datetime
-import base64
 import os
-import json
 load_dotenv(find_dotenv())
-
 
 
 informações_necessarias = """
@@ -107,7 +102,7 @@ E assim por diante, forneça uma lista com todas as informações.
 
 
 app = FastAPI()
-api_key = "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"
+api_key = os.getenv("OPENAI_API_KEY")
 chat = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key)
 REDIS_URL = "redis://default:A1ZDEbkF87w7TR0MPTBREnTFOnBgfBw9@redis-14693.c253.us-central1-1.gce.redns.redis-cloud.com:14693/0"
 
@@ -137,8 +132,8 @@ class ExtraiInformacoes(BaseModel):
             ("Jane Doe is a Senior Regulatory Advisor at the Financial Conduct Authority (FCA) in the UK. I don't have her email ou phone number at the moment. ", "UK")
         ])
     representantes: str = Field(description="representantes dos contatos mencionados")
-    assunto: str = Field(description="assunto do texto, deve ser 'politica', 'economia' ou 'justica'.")
-    resumo: str = Field(description="resumo do texto, deve ser uma breve descrição do evento, com no máximo 100 caracteres.")
+    assunto: str = Field(description="assunto do texto")
+    resumo: str = Field(description="resumo do texto.")
     acoes_acompanhamento: str = Field(description="acoes de acompanhamento do texto.")
     sentimento: str = Field(description="sentimento expresso pelo individuo, deve ser 'positivo', 'negativo' ou 'neutro'.")
 
@@ -173,9 +168,9 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-def get_memory_for_user(whatsapp_id):
+def get_memory_for_user(whatsapp):
     memory = RedisChatMessageHistory(
-        session_id=whatsapp_id, 
+        session_id=whatsapp, 
         redis_url=REDIS_URL)
     
     return ConversationBufferMemory(
@@ -187,25 +182,14 @@ def get_memory_for_user(whatsapp_id):
 pass_through = RunnablePassthrough.assign(
     agent_scratchpad=lambda x: format_to_openai_function_messages(x["intermediate_steps"])
 )
-agent_chain = pass_through | prompt | chat.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
-
-
-def run_agent(input):
-    passos_intermediarios = []
-    while True:
-        resposta = agent_chain.invoke({
-            "input": input,
-            "agent_scratchpad": format_to_openai_function_messages(passos_intermediarios)
-        })
-        if isinstance(resposta, AgentFinish):
-            return resposta
-        observacao = toolls[resposta.tool].run(resposta.tool_input)
-        passos_intermediarios.append((resposta, observacao))
 
 
 @app.post("/webhook")
 async def receive_message(request: Request):
     try:
+
+        chain = pass_through | prompt | chat.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
+        
         body = await request.json()
         response = body["n8n_message"]
         whatsapp_id = body['whatsapp_id']
@@ -217,7 +201,7 @@ async def receive_message(request: Request):
         print("-----------------------", memoria, "-----------------------\n")
 
         agent_executor = AgentExecutor(
-            agent=agent_chain,
+            agent=chain,
             memory=memoria,
             tools=toolls,
             verbose=True,
@@ -235,25 +219,3 @@ async def receive_message(request: Request):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-
-
-
-
-
-
-
-
-
-    """
-# Adiciona mensagens ao histórico
-history.add_message(HumanMessage(content="Hello, AI!"))
-history.add_message(AIMessage(content="Hello, human! How can I assist you today?"))
-
-# Recupera todas as mensagens
-messages = history.messages
-for message in messages:
-    print(f"{message.type}: {message.content}")
-"""
