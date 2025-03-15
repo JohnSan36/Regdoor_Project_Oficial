@@ -13,6 +13,8 @@ from langchain_core.tools import tool
 from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel, Field
 from datetime import datetime
+import httpx
+import json
 import os
 load_dotenv(find_dotenv())
 
@@ -156,12 +158,52 @@ def extrutura_informacao(
     return data, contatos, meio, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, acoes_acompanhamento, sentimento
 
 
-toolls = [extrutura_informacao]
+class BuscarPessoasSchema(BaseModel):
+    contato: str = Field(description="Nome ou parte do nome do contato.")
+    organization: str = Field(description="Nome da organização a ser buscada.")
+
+@tool(args_schema=BuscarPessoasSchema)
+async def buscar_pessoas_tool(contato: str, organization: str):
+    """Busca contatos e organizações utilizando a API do Regdoor.
+    Retorna um dicionário com as chaves 'contacts' e 'organizations'."""
+
+    url_contact = f"https://dev-api.regdoor.com/api/ai/contacts?query={contato}"
+    url_organization = f"https://dev-api.regdoor.com/api/ai/organizations?query={organization}"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response_contacts = await client.get(url_contact)
+            response_contacts.raise_for_status()
+            response_organization = await client.get(url_organization)
+            response_organization.raise_for_status()
+
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    
+    contacts_list = response_contacts.json()['items']
+    organizations_list = response_organization.json()['items']
+
+    target_uuid_set = {org['uuid'] for org in organizations_list if org['name'].lower() == organization.lower()}
+    
+    filtered_contacts = [
+        contact for contact in contacts_list 
+        if contato.lower() in contact['name'].lower() 
+        and any(org['uuid'] in target_uuid_set for org in contact.get('organizations', []))
+    ]
+
+    return {
+        "contacts": filtered_contacts,
+        "organizations": [
+            org for org in organizations_list if org['name'].lower() == organization.lower()
+        ]
+    }
+
+toolls = [extrutura_informacao, buscar_pessoas_tool]
 toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
 
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", f"Você é um assistente juridico que extrai informações do texto fornecido apenas quando todas as {informações_necessarias} estiverem presentes, e caso alguma delas não esteja, pergunte ao usuario antes de acionar a tool 'extrutura_informacao'. Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar o tool, fornecendo uma lista com todas informações contidas ao final. Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}."),
+    ("system", f"Você é um assistente juridico que extrai informações dos textos fornecido apenas quando todas as {informações_necessarias} estiverem presentes, e caso alguma delas não esteja, pergunte ao usuario antes de acionar a tool 'extrutura_informacao'. Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar o tool, fornecendo uma lista com todas informações contidas ao final. Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}."),
     MessagesPlaceholder(variable_name="memory"),
     ("user", "{input}"),
     MessagesPlaceholder(variable_name="agent_scratchpad")
@@ -203,7 +245,7 @@ async def receive_message(request: Request):
         agent_executor = AgentExecutor(
             agent=chain,
             memory=memoria,
-            tools=toolls,
+            tools=toolls_json,
             verbose=True,
             return_intermediate_steps=True
         )
