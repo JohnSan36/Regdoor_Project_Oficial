@@ -10,11 +10,12 @@ from langchain.agents import AgentExecutor
 from fastapi import FastAPI, Request, HTTPException
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
+from langchain_core.tools import BaseTool
 from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel, Field
 from datetime import datetime
 import httpx
-import json
+import requests
 import os
 load_dotenv(find_dotenv())
 
@@ -162,23 +163,23 @@ class BuscarPessoasSchema(BaseModel):
     contato: str = Field(description="Nome ou parte do nome do contato.")
     organization: str = Field(description="Nome da organização a ser buscada.")
 
+
 @tool(args_schema=BuscarPessoasSchema)
-async def buscar_pessoas_tool(contato: str, organization: str):
+def buscar_pessoas_tool(contato: str, organization: str):
     """Busca contatos e organizações utilizando a API do Regdoor.
     Retorna um dicionário com as chaves 'contacts' e 'organizations'."""
 
     url_contact = f"https://dev-api.regdoor.com/api/ai/contacts?query={contato}"
     url_organization = f"https://dev-api.regdoor.com/api/ai/organizations?query={organization}"
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response_contacts = await client.get(url_contact)
-            response_contacts.raise_for_status()
-            response_organization = await client.get(url_organization)
-            response_organization.raise_for_status()
+    try:
+        response_contacts = requests.get(url_contact)
+        response_contacts.raise_for_status()
+        response_organization = requests.get(url_organization)
+        response_organization.raise_for_status()
 
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
     
     contacts_list = response_contacts.json()['items']
     organizations_list = response_organization.json()['items']
@@ -187,15 +188,13 @@ async def buscar_pessoas_tool(contato: str, organization: str):
     
     filtered_contacts = [
         contact for contact in contacts_list 
-        if contato.lower() in contact['name'].lower() 
-        and any(org['uuid'] in target_uuid_set for org in contact.get('organizations', []))
+        if contato.lower() in contact['name'].lower()
+        and any(org['uuid'] in target_uuid_set for org in contact['organizations'])
     ]
 
     return {
         "contacts": filtered_contacts,
-        "organizations": [
-            org for org in organizations_list if org['name'].lower() == organization.lower()
-        ]
+        "organizations": [org for org in organizations_list if org['name'].lower() == organization.lower()],
     }
 
 toolls = [extrutura_informacao, buscar_pessoas_tool]
@@ -235,6 +234,7 @@ async def receive_message(request: Request):
         body = await request.json()
         response = body["n8n_message"]
         whatsapp_id = body['whatsapp_id']
+        
         print("Mensagem recebida:", body)
         print(f"\n----------####### {whatsapp_id} #######------------")
         print(f"----------####### {response} #######------------\n")
@@ -245,7 +245,7 @@ async def receive_message(request: Request):
         agent_executor = AgentExecutor(
             agent=chain,
             memory=memoria,
-            tools=toolls_json,
+            tools=toolls,
             verbose=True,
             return_intermediate_steps=True
         )
