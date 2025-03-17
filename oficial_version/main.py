@@ -126,11 +126,10 @@ def extrutura_informacao(
         representantes: str, 
         assunto: str, 
         resumo: str, 
-        acoes_acompanhamento: str, 
         sentimento: str):
     
     """Extrutura as informações do texto"""
-    return data, contatos, meio, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, acoes_acompanhamento, sentimento
+    return data, contatos, meio, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, sentimento
 
 
 class BuscarPessoasSchema(BaseModel):
@@ -157,18 +156,11 @@ def buscar_pessoas_tool(contato: str, organization: str):
     contacts_list = return_contacts.json()['items']
     organizations_list = return_organization.json()['items']
 
-    target_uuid_set = {org['uuid'] for org in organizations_list if org['name'].lower() == organization.lower()}
-    
-    filtered_contacts = [
-        contact for contact in contacts_list 
-        if contato.lower() in contact['name'].lower()
-        and any(org['uuid'] in target_uuid_set for org in contact['organizations'])
-    ]
-
     return {
-        "contacts": filtered_contacts,
-        "organizations": [org for org in organizations_list if org['name'].lower() == organization.lower()],
+        "contacts": contacts_list,
+        "organizations": organizations_list
     }
+
 
 toolls = [extrutura_informacao, buscar_pessoas_tool]
 toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
