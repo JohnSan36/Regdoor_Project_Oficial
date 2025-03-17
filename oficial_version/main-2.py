@@ -113,8 +113,8 @@ class ExtraiInformacoes(BaseModel):
             ("Jane Doe is a Senior Regulatory Advisor at the Financial Conduct Authority (FCA) in the UK. I don't have her email ou phone number at the moment. ", "UK")
         ])
     representantes: str = Field(description="representantes dos contatos mencionados")
-    assunto: str = Field(description="assunto do texto")
-    resumo: str = Field(description="resumo do texto.")
+    assunto: str = Field(description="assunto do texto o qual você deve identificar através do historico de conversas.")
+    resumo: str = Field(description="resumo do texto o qual você deve criar através do historico de conversas..")
     acoes_acompanhamento: str = Field(description="acoes de acompanhamento do texto.")
     sentimento: str = Field(description="sentimento expresso pelo individuo, deve ser 'positivo', 'negativo' ou 'neutro'.")
 
