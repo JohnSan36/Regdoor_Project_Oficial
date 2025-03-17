@@ -33,9 +33,6 @@ informações_necessarias = """
 - Se estiver faltando e não for possivel identificar através da organização, você deve confirmar o país ou região relacionada ao órgão ou entidade reguladora.
 # Representantes da Empresa
 - Se o usuário não mencionar explicitamente representantes da empresa, você deve solicitar que confirmem se alguém de sua empresa participou.
-# Ações de Acompanhamento
-- Se os acompanhamentos forem mencionados, você deve extrair prazos, responsáveis e próximas etapas específicas.
-- Se o usuário não mencionar ações de acompanhamento, pergunte se há alguma tarefa a ser concluída.
 """
 
 
@@ -84,7 +81,7 @@ exemplos_listas = """
 
 app = FastAPI()
 api_key = os.getenv("OPENAI_API_KEY")
-chat = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key)
+chat = ChatOpenAI(model="gpt-4o", openai_api_key=api_key)
 REDIS_URL = "redis://default:A1ZDEbkF87w7TR0MPTBREnTFOnBgfBw9@redis-14693.c253.us-central1-1.gce.redns.redis-cloud.com:14693/0"
 
 
@@ -115,7 +112,6 @@ class ExtraiInformacoes(BaseModel):
     representantes: str = Field(description="representantes dos contatos mencionados")
     assunto: str = Field(description="assunto do texto")
     resumo: str = Field(description="resumo do texto.")
-    acoes_acompanhamento: str = Field(description="acoes de acompanhamento do texto.")
     sentimento: str = Field(description="sentimento expresso pelo individuo, deve ser 'positivo', 'negativo' ou 'neutro'.")
 
 
@@ -234,7 +230,7 @@ async def receive_message(request: Request):
         )
 
         resposta = agent_executor.invoke({"input": response})
-        resposta_final = resposta["output"]
+        resposta_final = resposta
 
         return {"Status": resposta_final}
 
