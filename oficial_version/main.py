@@ -14,7 +14,6 @@ from langchain_core.tools import BaseTool
 from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel, Field
 from datetime import datetime
-import httpx
 import requests
 import os
 load_dotenv(find_dotenv())
@@ -30,7 +29,7 @@ informações_necessarias = """
 # Organizações
 - A qual organização pertenciam os membros presentes na reunião. Se o usuário mencionar apenas a jurisdição, ou um nome parcial de um órgão regulador, você deve confirmar o nome completo da organização e garantir a especificidade da jurisdição.
 # Jurisdição
-- Se estiver faltando e não for possivel identificar através da organização, você deve confirmar o país ou região relacionada ao órgão ou entidade reguladora.
+- Deve ser identificada através das informações obtidas através da organização do contato, mas jamais pergunte isso diretamente (exemplo: BCRA, já esta implicito que se trata de Argentina).
 # Representantes da Empresa
 - Se o usuário não mencionar explicitamente representantes da empresa, você deve solicitar que confirmem se alguém de sua empresa participou.
 """
@@ -105,9 +104,10 @@ class ExtraiInformacoes(BaseModel):
     cargo: str = Field(description="cargo dos contatos mencionados")
     organizacoes: str = Field(description="organizaçao dos contatos mencionados")
     jurisdicoes: str = Field(
-        description="jurisdições mencionadas",
+        description="Deve ser identificada através das informações obtidas através da organização do contato. BCRA, já esta implicito que se trata de Argentina).",
         examples=[
-            ("Jane Doe is a Senior Regulatory Advisor at the Financial Conduct Authority (FCA) in the UK. I don't have her email ou phone number at the moment. ", "UK")
+            ("Jane Doe is a Senior Regulatory Advisor at the Financial Conduct Authority (FCA) in the UK. I don't have her email ou phone number at the moment. ", "UK"),
+            ("BCRA, 'esta implicito que se trata de Argentina'")
         ])
     representantes: str = Field(description="representantes dos contatos mencionados")
     assunto: str = Field(description="assunto do texto")
@@ -168,10 +168,14 @@ toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", f"""
-        - Você é um assistente juridico que extrai informações dos textos fornecido apenas quando todas as {informações_necessarias} estiverem presentes, após verificar se os textos fornecidos contem todas as informações necessarias, acionar a tool 'extrutura_informacao', caso alguma delas não esteja, pergunte ao usuario antes de acionar o tool. 
-        - Sempre que possuir o nome de um individuo e a organização em que atua, acione a tool 'buscar_pessoas_tool' e retorne apenas seu nome completo e a organização em que trabalha, e caso não havendo o nome exato da pessoa naquela organização, retorne nomes similares dentro da mesma organização.
-        - Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar as devidas tools, fornecendo uma lista com todas informações obtidas com a tool 'extrutura_informacao' ao final da conversa. 
-        - Sempre que houver o nome de alguém e sua organização, pesquise no database utilizando a tool 'buscar_pessoas_tool'. 
+        - Você é um assistente juridico que trabalha na Regdoor, seu trabalho é dividido em duas etapas:
+        1-Através do input você identifica o nome de quem se esta falando (contato) e onde ele trabalha (organização), para então utilizar a tool 'buscar_pessoas_tool' e obter as demais informações que retornarão do database.
+        2-Extrair as informações do texto quando todas as {informações_necessarias} estiverem presentes, após verificar se os textos fornecidos contem todas as informações necessarias, acionar a tool 'extrutura_informacao', caso alguma delas não esteja, pergunte ao usuario antes de acionar o tool.
+        - Você responde na lingua/idioma do usuario. 
+        - Seja direto e conciso, assim que tiver o nome e empresa de onde o usuario atua, usu a tool 'buscar_pessoas_tool' e retorne apenas seu nome completo e a organização em que trabalha, e caso não havendo o nome exato da pessoa naquela organização, retorne nomes similares dentro da mesma organização.
+        - Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar as devidas tools, fornecendo uma lista com todas informações obtidas com a tool 'extrutura_informacao' ao final da conversa.
+        - Faça apenas uma pergunta por vez.
+        - Sempre que o nome de alguém e sua organização estiver presentes na mensagem, pesquise no database utilizando a tool 'buscar_pessoas_tool'. 
         - Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}.
         """),
     MessagesPlaceholder(variable_name="memory"),
