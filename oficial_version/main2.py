@@ -14,28 +14,27 @@ from langchain_core.tools import BaseTool
 from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel, Field
 from datetime import datetime
-import httpx
 import requests
 import os
 load_dotenv(find_dotenv())
 
 
 informações_necessarias = """
-# Data 
-- Deve ser capturada automaticamente com base no dia em que a interação ocorreu, e não quando foi registrada, e caso o usuário fornecer termos relativos como "ontem" ou "amanhã", o você deve pedir uma data específica para evitar ambiguidade.
-# Contatos 
-- Pessoas presentes na reunião.
-# Meio
-- Caso o usuario não mencione o meio, pergunte qual foi o meio utilizado (ex: Google Meet, presencial, etc...).
-# Organizações
-- A qual organização pertenciam os membros presentes na reunião. Se o usuário mencionar apenas a jurisdição, ou um nome parcial de um órgão regulador, você deve confirmar o nome completo da organização e garantir a especificidade da jurisdição.
-# Jurisdição
-- Se estiver faltando e não for possivel identificar através da organização, você deve confirmar o país ou região relacionada ao órgão ou entidade reguladora.
-# Representantes da Empresa
-- Se o usuário não mencionar explicitamente representantes da empresa, você deve solicitar que confirmem se alguém de sua empresa participou.
-# Ações de Acompanhamento
-- Se os acompanhamentos forem mencionados, você deve extrair prazos, responsáveis e próximas etapas específicas.
-- Se o usuário não mencionar ações de acompanhamento, pergunte se há alguma tarefa a ser concluída.
+# Date
+- It must be automatically captured based on the day the interaction occurred, not when it was recorded. If the user provides relative terms like "yesterday" or "tomorrow," you should request a specific date to avoid ambiguity.
+# Contacts
+- People present at the meeting.
+# Medium
+- If the user does not mention the medium, ask which medium was used (e.g., Google Meet, in-person, etc.).
+# Organizations
+- Which organization the members present at the meeting belonged to. If the user mentions only the jurisdiction or a partial name of a regulatory body, you must confirm the full name of the organization and ensure the jurisdiction is specified.
+# Jurisdiction
+- If it is missing and cannot be identified through the organization, you must confirm the country or region related to the body or regulatory entity.
+# Company Representatives
+- If the user does not explicitly mention company representatives, you must ask them to confirm whether someone from their company participated.
+# Follow-up Actions
+- If follow-ups are mentioned, you must extract deadlines, responsible parties, and specific next steps.  
+- If the user does not mention follow-up actions, ask if there are any tasks to be completed.
 """
 
 
@@ -180,11 +179,11 @@ toolls_json = [convert_to_openai_function(tooll) for tooll in toolls]
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", f"""
-        - Você é um assistente juridico que extrai informações dos textos fornecido apenas quando todas as {informações_necessarias} estiverem presentes, após verificar se os textos fornecidos contem todas as informações necessarias, acionar a tool 'extrutura_informacao', caso alguma delas não esteja, pergunte ao usuario antes de acionar o tool. 
-        - Sempre que possuir o nome de um individuo e a organização em que atua, acione a tool 'buscar_pessoas_tool' e retorne apenas seu nome completo e a organização em que trabalha, e caso não havendo o nome exato da pessoa naquela organização, retorne nomes similares dentro da mesma organização.
-        - Pergunte uma coisa de cada vez até que todas as informações estejam presentes e você possa acionar as devidas tools, fornecendo uma lista com todas informações obtidas com a tool 'extrutura_informacao' ao final da conversa. 
-        - Sempre que houver o nome de alguém e sua organização, pesquise no database utilizando a tool 'buscar_pessoas_tool'. 
-        - Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}.
+        - You are a legal assistant that extracts information from the provided texts only when all the {informações_necessarias} is present, after verifying if the supplied texts contain all the necessary information, activate the 'extract_information' tool; if any of it is missing, ask the user before activating the tool.
+        - Whenever you have the name of an individual and the organization they work for, activate the 'search_people_tool' and return only their full name and the organization they work for, and if the exact name of the person is not found in that organization, return similar names within the same organization.
+        - Ask one thing at a time until all the information is present and you can activate the appropriate tools, providing a list with all the information obtained with the 'extract_information' tool at the end of the conversation.
+        - Whenever there is a person's name and their organization, search the database using the 'search_people_tool'.
+        - For reference, the current date is {data_atual}. Do not use markdown formatting. If needed, follow the examples in {exemplos}. Do not use asterisks '*' in your messages. It is forbidden to use asterisks '*' in your messages. It is forbidden to use markdown formatting. When listing something, use '-' instead of '.' as in the examples {exemplos_listas}. RULE: For listing items, follow the example of {exemplos_listas}.
         """),
     MessagesPlaceholder(variable_name="memory"),
     ("user", "{input}"),
@@ -211,7 +210,6 @@ pass_through = RunnablePassthrough.assign(
 @app.post("/webhook")
 async def receive_message(request: Request):
     try:
-
         chain = pass_through | prompt | chat.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
         
         body = await request.json()
