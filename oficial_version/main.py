@@ -10,7 +10,6 @@ from langchain.agents import AgentExecutor
 from fastapi import FastAPI, Request, HTTPException
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
-from langchain_core.tools import BaseTool
 from langchain_redis import RedisChatMessageHistory
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -86,7 +85,6 @@ Great, thank you for the information. Based on what you shared, here are the str
 - Date: 2025-03-17
 - Contacts: Tamas Simonyi
 - Medium: Google Meet
-- Position: Not mentioned in the original text
 - Organizations: Magyar Nemzeti Bank (Central Bank of Hungary)
 - Jurisdiction: Hungary
 - Representatives: Victor (from your company)
@@ -156,7 +154,7 @@ async def receive_message(request: Request):
                     ("My name is Alfredo and I spoke with Severino about the US inauguration topic.", "Alfredo, Severino")
                 ])
             meio: str = Field(description="Contact method of the mentioned contacts. Should ask if it was Google Meet, in-person, or which method was used.")
-            cargo: str = Field(description="Position of the mentioned contacts")
+            #cargo: str = Field(description="Position of the mentioned contacts")
             organizacoes: str = Field(description="Organization/companies of the mentioned contacts")
             jurisdicoes: str = Field(
                 description="Should be identified through the information obtained from the contact's organization. BCRA, it is already implied that it is Argentina.",
@@ -171,9 +169,9 @@ async def receive_message(request: Request):
 
 
         @tool(args_schema=ExtraiInformacoes) 
-        def extrutura_informacao(data: str, contatos: str, meio: str, cargo: str, organizacoes: str, jurisdicoes: str, representantes: str, assunto: str, resumo: str, sentimento: str):
+        def extrutura_informacao(data: str, contatos: str, meio: str, organizacoes: str, jurisdicoes: str, representantes: str, assunto: str, resumo: str, sentimento: str):
             """Structure the information from the text"""
-            return data, contatos, meio, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, sentimento
+            return data, contatos, meio, organizacoes, jurisdicoes, representantes, assunto, resumo, sentimento
 
 
         class BuscarPessoasSchema(BaseModel):
@@ -206,7 +204,7 @@ async def receive_message(request: Request):
 
 
         @tool
-        def excluir_memoria(whatsapp_id):
+        def excluir_memoria(whatsapp_id: str):
             """Exclui memória após o usuário confirmar que a lista de mensagens está correta"""
             r = redis.from_url(REDIS_URL, decode_responses=True)
 
@@ -227,8 +225,9 @@ async def receive_message(request: Request):
         prompt = ChatPromptTemplate.from_messages([
             ("system", f"""
                 - You are a legal assistant working at Regdoor, and your work is divided into two stages:
-                1-Through the input, you identify the language, the name of the person being referred to (contact) and where they work (organization), then use the tool 'buscar_pessoas_tool' to obtain additional information that will be returned from the database.
-                2-Extract information from the text when all {informações_necessarias} are present. After verifying that the provided texts contain all necessary information, trigger the tool 'extrutura_informacao'. If any are missing, ask the user before triggering the tool.
+                1-Through the input, you identify the name of the person being referred to (contact) and where they work (organization), then use the tool 'buscar_pessoas_tool' to obtain additional information that will be returned from the database, To then confirm whether the person you found is the same person the user is talking about.
+                2-You identify the language of user's input and respond in that language.
+                3-Extract information from the text when all {informações_necessarias} are present. After verifying that the provided texts contain all necessary information, trigger the tool 'extrutura_informacao'. If any are missing, ask the user before triggering the tool.
                 - When presenting the listed information to the user, ask them to confirm if everything is correct by pressing 1 to confirm, as in the example {exemplo_confirmacao}, and then trigger the tool 'excluir_memoria' using {whatsapp_id} as an argument.
                 - You respond in the user's language. 
                 RULE: You always respond in the user's language.

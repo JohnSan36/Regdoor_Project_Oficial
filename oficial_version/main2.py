@@ -140,21 +140,21 @@ async def receive_message(request: Request):
 
         #---------------------------------------------tools--------------------------------------------------
 
-        class ExtraiInformacoes(BaseModel):
+class ExtraiInformacoes(BaseModel):
             """Extrair informações de compliance"""
             data: str = Field(description="Data em que o evento ocorreu (se a pessoa disser algo como ontem ou algo do tipo, perguntar a data específica)")
-            contatos: str = Field(
+    contatos: str = Field(
                 description="Nome das pessoas contidas no texto", 
-                examples=[
-                    ("Me chamo Rafael e falei com o Junior sobre assunto XYZ.", "Rafael, Junior"), 
+        examples=[
+            ("Me chamo Rafael e falei com o Junior sobre assunto XYZ.", "Rafael, Junior"), 
                     ("Me chamo Alfredo e falei com o Severino sobre assunto a posse dos EUA.", "Alfredo, Severino")
                 ])
             meio: str = Field(description="Meio de contato dos contatos mencionados. Deve perguntar se foi Google Meet, presencial, ou qual meio foi utilizado.")
             cargo: str = Field(description="Cargo dos contatos mencionados")
             organizacoes: str = Field(description="Organização/empresas dos contatos mencionados")
-            jurisdicoes: str = Field(
+    jurisdicoes: str = Field(
                 description="Deve ser identificada através das informações obtidas através da organização do contato. BCRA, já está implícito que se trata de Argentina.",
-                examples=[
+        examples=[
                     ("Jane Doe é uma Consultora Reguladora Sênior na Autoridade de Conduta Financeira (FCA) no Reino Unido. Eu não tenho o e-mail ou número de telefone dela no momento.", "Reino Unido"),
                     ("BCRA", "está implícito que se trata de Argentina")
                 ])
@@ -164,36 +164,36 @@ async def receive_message(request: Request):
             sentimento: str = Field(description="Sentimento expresso pelo indivíduo, deve ser 'positivo', 'negativo' ou 'neutro'.")
 
 
-        @tool(args_schema=ExtraiInformacoes) 
+@tool(args_schema=ExtraiInformacoes)
         def extrutura_informacao(data: str, contatos: str, meio: str, cargo: str, organizacoes: str, jurisdicoes: str, representantes: str, assunto: str, resumo: str, sentimento: str):
             """Estrutura as informações do texto"""
             return data, contatos, meio, cargo, organizacoes, jurisdicoes, representantes, assunto, resumo, sentimento
 
 
-        class BuscarPessoasSchema(BaseModel):
-            contato: str = Field(description="Nome ou parte do nome do contato.")
-            organization: str = Field(description="Nome da organização a ser buscada.")
+class BuscarPessoasSchema(BaseModel):
+    contato: str = Field(description="Nome ou parte do nome do contato.")
+    organization: str = Field(description="Nome da organização a ser buscada.")
 
-        @tool(args_schema=BuscarPessoasSchema)
-        def buscar_pessoas_tool(contato: str, organization: str):
-            """Busca contatos e organizações utilizando a API do Regdoor."""
+@tool(args_schema=BuscarPessoasSchema)
+def buscar_pessoas_tool(contato: str, organization: str):
+    """Busca contatos e organizações utilizando a API do Regdoor."""
 
-            url_contact = f"https://dev-api.regdoor.com/api/ai/contacts?query={contato}"
-            url_organization = f"https://dev-api.regdoor.com/api/ai/organizations?query={organization}"
+    url_contact = f"https://dev-api.regdoor.com/api/ai/contacts?query={contato}"
+    url_organization = f"https://dev-api.regdoor.com/api/ai/organizations?query={organization}"
 
-            try:
-                return_contacts = requests.get(url_contact)
-                return_contacts.raise_for_status()
-                return_organization = requests.get(url_organization)
-                return_organization.raise_for_status()
+    try:
+        return_contacts = requests.get(url_contact)
+        return_contacts.raise_for_status()
+        return_organization = requests.get(url_organization)
+        return_organization.raise_for_status()
 
-            except requests.exceptions.HTTPError as e:
-                raise HTTPException(status_code=e.response.status_code, detail=str(e))
-            
-            contacts_list = return_contacts.json()['items']
-            organizations_list = return_organization.json()['items']
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=str(e))
+    
+    contacts_list = return_contacts.json()['items']
+    organizations_list = return_organization.json()['items']
 
-            return {
+    return {
                 "contacts": contacts_list,
                 "organizations": organizations_list
             }
@@ -220,8 +220,8 @@ async def receive_message(request: Request):
         #/---------------------------------------------tools-----------------------------------------------------
 
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""
+prompt = ChatPromptTemplate.from_messages([
+    ("system", f"""
                 - Você é um assistente juridico que trabalha na Regdoor, seu trabalho é dividido em duas etapas:
                 1-Através do input você identifica o nome de quem se esta falando (contato) e onde ele trabalha (organização), para então utilizar a tool 'buscar_pessoas_tool' e obter as demais informações que retornarão do database.
                 2-Extrair as informações do texto quando todas as {informações_necessarias} estiverem presentes, após verificar se os textos fornecidos contem todas as informações necessarias, acionar a tool 'extrutura_informacao', caso alguma delas não esteja, pergunte ao usuario antes de acionar o tool.
@@ -234,15 +234,15 @@ async def receive_message(request: Request):
                 - Não fale que vai acionar uma tool ou qualquer coisa do tipo, o usuario não deve saber disto.
                 - Sempre que o nome de alguém e sua organização estiver presentes na mensagem, pesquise no database utilizando a tool 'buscar_pessoas_tool'. 
                 - Para referencia a data atual é {data_atual}. Não utilize formatação markdown. Caso precise, sigo os exemplos em {exemplos}. Não use asteriscos '*' em suas mensagens. Proibido usar asteriscos '*' em suas mensagens. Proibido usar formatação markdown. Quando for listar algo, use '-' ao invés de '.' como nos exemplos {exemplos_listas}. REGRA: Para listar itens use o exemplo de {exemplos_listas}.
-            """),
-            MessagesPlaceholder(variable_name="memory"),
-            ("user", "{input}"),
+        """),
+    MessagesPlaceholder(variable_name="memory"),
+    ("user", "{input}"),
             #Remova: Formatação específica do OpenAI
             #MessagesPlaceholder(variable_name="agent_scratchpad")
         ])
 
 
-        pass_through = RunnablePassthrough.assign(
+pass_through = RunnablePassthrough.assign(
             #Remova: Formatação específica do OpenAI
             #agent_scratchpad=lambda x: format_to_openai_function_messages(x["intermediate_steps"])
         )
