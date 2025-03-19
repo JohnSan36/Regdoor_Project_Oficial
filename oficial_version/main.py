@@ -108,7 +108,10 @@ If any of these names seem familiar or related to your meeting, please let me kn
 
 app = FastAPI()
 api_key = os.getenv("OPENAI_API_KEY")
-chat = ChatOpenAI(model="gpt-4o", openai_api_key=api_key)
+
+chat_4o_mini = ChatOpenAI(model="gpt-4o-mini", openai_api_key=api_key, temperature=0.0)
+chat_4o = ChatOpenAI(model="gpt-4o", openai_api_key=api_key, temperature=0.0)
+
 REDIS_URL = "redis://default:A1ZDEbkF87w7TR0MPTBREnTFOnBgfBw9@redis-14693.c253.us-central1-1.gce.redns.redis-cloud.com:14693/0"
 
 
@@ -249,10 +252,13 @@ async def receive_message(request: Request):
             agent_scratchpad=lambda x: format_to_openai_function_messages(x["intermediate_steps"])
         )
         
-        chain = pass_through | prompt | chat.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
+        chain = pass_through | prompt | chat_4o.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
+        chain_backup = pass_through | prompt | chat_4o_mini.bind(functions=toolls_json) | OpenAIFunctionsAgentOutputParser()
+
+        chain_fallback = chain.with_fallbacks([chain_backup])
 
         agent_executor = AgentExecutor(
-            agent=chain,
+            agent=chain_fallback,
             memory=memoria,
             tools=toolls,
             verbose=True,
